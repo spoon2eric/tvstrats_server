@@ -8,9 +8,15 @@ from services.db_conn import setup_mongodb, MongoConnection
 from services import stage1, stage2, stage3, reset_dots_stage
 from services.get_dots import get_and_store_dot_data
 import schedule
+from flask import Flask
+app = Flask(__name__)
 
 dotenv_path = "./config/.env"
 load_dotenv(dotenv_path=dotenv_path)
+
+@app.route('/')
+def hello_world():
+    return 'Hello, World!'
 
 class FileChangeHandler(FileSystemEventHandler):
     def on_modified(self, event):
@@ -211,5 +217,8 @@ def main():
         observer.stop()
     observer.join()
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', debug=False, port=5000)
