@@ -8,15 +8,9 @@ from services.db_conn import setup_mongodb, MongoConnection
 from services import stage1, stage2, stage3, reset_dots_stage
 from services.get_dots import get_and_store_dot_data
 import schedule
-from flask import Flask
-app = Flask(__name__)
 
 dotenv_path = "./config/.env"
 load_dotenv(dotenv_path=dotenv_path)
-
-@app.route('/')
-def hello_world():
-    return 'Hello, World!'
 
 class FileChangeHandler(FileSystemEventHandler):
     def on_modified(self, event):
@@ -106,7 +100,6 @@ def update_ui_collection(ticker, time_frame, stage=None, is_red_dot=None, is_gre
         logger.info(f"Updated UI collection for {ticker}-{time_frame} to stage {stage}")
 
 
-
 def job():
     logger = logging.getLogger('mainLogger')
     
@@ -186,8 +179,6 @@ def job():
                 # No need to continue as the pattern has been reset
                 continue
 
-
-
 def main():
     setup_logging()
     logger = logging.getLogger('mainLogger')
@@ -217,8 +208,5 @@ def main():
         observer.stop()
     observer.join()
 
-# if __name__ == '__main__':
-#     main()
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', debug=False, port=5000)
+if __name__ == '__main__':
+    main()

@@ -13,6 +13,4 @@ RUN apt-get update && \
 
 COPY . .
 
-EXPOSE 5001
-
-CMD ["gunicorn", "--bind", "0.0.0.0:5005", "--workers", "1", "--timeout", "120" ,"main:app"]
+CMD ["python", "./main.py"]
