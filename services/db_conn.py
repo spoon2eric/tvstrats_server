@@ -36,16 +36,16 @@ class MongoConnection:
         self.client.close()
 
 def setup_mongodb():
-    logging.info("Setting up MongoDB...")
+    logging.warning("Setting up MongoDB...")
     try:
         with MongoConnection() as mongo_conn:
             db = mongo_conn.db
             for collection_name in [MongoConnection.COLLECTION_NAME, MongoConnection.TRADES_COLLECTION_NAME, MongoConnection.UI_COLLECTION_NAME]:
                 if collection_name not in db.list_collection_names():
                     db.create_collection(collection_name)
-                    logging.info(f"Collection {collection_name} created.")
+                    logging.warning(f"Collection {collection_name} created.")
                 else:
-                    logging.info(f"Collection {collection_name} already exists.")
-            logging.info("MongoDB setup completed successfully.")
+                    logging.warning(f"Collection {collection_name} already exists.")
+            logging.warning("MongoDB setup completed successfully.")
     except Exception as e:
         logging.error(f"Error setting up MongoDB: {e}")

@@ -103,7 +103,7 @@ def update_ui_collection(ticker, time_frame, stage=None, is_red_dot=None, is_gre
 def job():
     logger = logging.getLogger('mainLogger')
     
-    logger.info("Starting job function")
+    logger.warning("Starting job function")
 
     dot_tickers = get_all_dot_tickers_from_file()
     if not dot_tickers:
@@ -178,6 +178,7 @@ def job():
                 update_ui_collection(ticker, time_frame, **result)
                 # No need to continue as the pattern has been reset
                 continue
+    logger.warning("End of job function")
 
 def main():
     setup_logging()
@@ -186,13 +187,13 @@ def main():
     if version is None:
         logger.warning('VERSION is not set in .env file')
     else:
-        logger.info('__main__ tvstrats_server version: %s', version)
+        logger.warning('__main__ tvstrats_server version: %s', version)
 
     setup_mongodb()
-    logger.info("========================")
+    logger.warning("========================")
     # Set up the schedule
     schedule_interval = int(os.getenv("SCHEDULE_INTERVAL", 12))
-    schedule.every(schedule_interval).minute.do(job)
+    schedule.every(schedule_interval).minutes.do(job)
 
     # Set up the file change observer
     event_handler = FileChangeHandler()
