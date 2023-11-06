@@ -217,7 +217,7 @@ def main():
     logger.warning("========================")
     # Set up the schedule
     schedule_interval = int(os.getenv("SCHEDULE_INTERVAL", 12))
-    schedule.every(schedule_interval).seconds.do(job)
+    schedule.every(schedule_interval).minutes.do(job)
 
     # Set up the file change observer
     event_handler = FileChangeHandler()
