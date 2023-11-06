@@ -3,7 +3,7 @@ from services.db_conn import MongoConnection
 
 def find_red_dot(ticker, time_frame, start_time):
     logger = logging.getLogger('mainLogger')
-
+    logger.debug("Entering find_red_dot()")
     with MongoConnection() as mongo_conn:
         collection = mongo_conn.collection
 
@@ -19,6 +19,7 @@ def find_red_dot(ticker, time_frame, start_time):
 
         for record in records:
             if stage == 1:
+                logger.info(f"Record in stage2: {record}")
                 red_dot_value_str = record.get('Blue Wave Crossing Down')
                 if red_dot_value_str and red_dot_value_str != 'null':
                     red_dot_value = float(red_dot_value_str)

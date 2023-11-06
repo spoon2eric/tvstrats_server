@@ -4,7 +4,7 @@ from services.db_conn import MongoConnection
 
 def find_big_green_dot(ticker, time_frame):
     logger = logging.getLogger('mainLogger')
-
+    logger.debug("Entering find_big_green_dot()")
     with MongoConnection() as mongo_conn:
         collection = mongo_conn.collection
         query = {

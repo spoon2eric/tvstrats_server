@@ -57,9 +57,13 @@ def setup_logging():
 
 def get_current_stage(ticker, time_frame):
     with MongoConnection() as mongo_conn:
+        logger = logging.getLogger('mainLogger')
+        logger.info(f"Inside get_current_stage()")
         ui_collection = mongo_conn.ui_collection
         record = ui_collection.find_one({"ticker": ticker, "time_frame": time_frame})
         
+        logger.info(f"Record: {record}")  # This will log the fetched record
+
         if record:
             return (
                 record.get('stage', 0), 
@@ -71,7 +75,9 @@ def get_current_stage(ticker, time_frame):
         else:
             return 0, None, None, None, None
 
-def update_ui_collection(ticker, time_frame, stage=None, is_red_dot=None, is_green_dot=None, money_flow=None, start_time=None, big_green_dot_time=None, red_dot_time=None, green_dot_time=None):
+def update_ui_collection(ticker, time_frame, stage=None, is_red_dot=None, is_green_dot=None, money_flow=None, start_time=None, big_green_dot_time=None, red_dot_time=None, green_dot_time=None, red_dot_value=None):
+    logger = logging.getLogger('mainLogger')
+
     with MongoConnection() as mongo_conn:
         ui_collection = mongo_conn.ui_collection
         
@@ -84,19 +90,19 @@ def update_ui_collection(ticker, time_frame, stage=None, is_red_dot=None, is_gre
             "green_dot_time": green_dot_time,
             "is_red_dot": is_red_dot,
             "is_green_dot": is_green_dot,
-            "money_flow": money_flow
+            "money_flow": money_flow,
+            "red_dot_value": red_dot_value
         }
-        
+    
         # Remove keys with None values
         update_data = {k: v for k, v in update_data.items() if v is not None}
-        
+        logger.info(f"Update_data: {update_data}")
         ui_collection.update_one(
             {"ticker": ticker, "time_frame": time_frame},
             {"$set": update_data},
             upsert=True
         )
         
-        logger = logging.getLogger('mainLogger')
         logger.info(f"Updated UI collection for {ticker}-{time_frame} to stage {stage}")
 
 
@@ -108,12 +114,12 @@ def job():
     dot_tickers = get_all_dot_tickers_from_file()
     if not dot_tickers:
         logger.warning("No dot tickers found")
-        return
 
     logger.info(f"Found {len(dot_tickers)} dot tickers. Getting current green and red dots for all tickers and timeframes")
     dot_data_list = get_and_store_dot_data(dot_tickers)
 
     for dot_data in dot_data_list:
+        logger.info(f"{dot_data}")
         update_ui_collection(
             dot_data["ticker"], 
             dot_data["time_frame"], 
@@ -123,13 +129,20 @@ def job():
         )
 
     tickers = get_all_tickers_from_file()
+    logger.info(f"Start loop for tickers")
     for ticker_info in tickers:
+        logger.info(f"Inside loop ticker_info")
         ticker = ticker_info["ticker_symbol"]
         time_frame = ticker_info["time_frame"]
+        logger.info(f"get_all_tickers_from_file - {ticker}-{time_frame}")
+        
         current_stage, start_time, big_green_dot_time, red_dot_time, green_dot_time = get_current_stage(ticker, time_frame)
+        
+        logger.info(f"Returned from get_current_state(): {current_stage}-{start_time}-{big_green_dot_time}-{red_dot_time}-{green_dot_time}")
         red_dot_value = None  # Initialize red_dot_value here
 
         if current_stage == 0:
+            logger.info(f"main current_stage = {current_stage}")
             result = stage1.find_big_green_dot(ticker, time_frame)
             if result:
                 big_green_dot_time = result["TV Time"]
@@ -143,19 +156,28 @@ def job():
                 continue  # Skip to next iteration as pattern is broken
 
         if current_stage == 1:
+            logger.info(f"main current_stage = {current_stage}")
             result = stage2.find_red_dot(ticker, time_frame, start_time)
             if result and result["Stage"] != 0:
                 red_dot_time = result["TV Time"]
                 red_dot_value = result["Red Dot Value"]  # Get the red dot value from the result
                 logger.info(f"Setting stage to 2 from main")
-                update_ui_collection(ticker, time_frame, 2, start_time=start_time, big_green_dot_time=big_green_dot_time, red_dot_time=red_dot_time)
+                update_ui_collection(ticker, time_frame, 2, start_time=start_time, big_green_dot_time=big_green_dot_time, red_dot_time=red_dot_time, red_dot_value=red_dot_value)
                 current_stage = 2  # Update current_stage for immediate next stage check
             else:
                 update_ui_collection(ticker, time_frame, 1)  # Keep stage at 1 if pattern is not broken
                 continue  # Skip to next iteration as pattern is broken
 
         if current_stage == 2:
+            result = stage2.find_red_dot(ticker, time_frame, start_time)
+            red_dot_value = result["Red Dot Value"]
+            logger.info(f"Inside current_stage == 2, red_dot_value is: {red_dot_value}")
+            logger.info(f"main current_stage = {current_stage}")
+            logger.info(f"Current stage: {current_stage}, Ticker: {ticker}, Time Frame: {time_frame}")
+            logger.info(f"Red Dot Time: {red_dot_time}, Red Dot Value: {red_dot_value}")
+
             if red_dot_value is not None:
+            #if red_dot_value is None:
                 result = stage3.find_green_dot(ticker, time_frame, red_dot_time, red_dot_value)  # Pass the red dot value here
                 if result:
                     if result["Stage"] == 0:
@@ -169,10 +191,12 @@ def job():
                     update_ui_collection(ticker, time_frame, 2)  # Keep stage at 2 if pattern is not broken
                     continue  # Skip to next iteration as pattern is broken
             else:
+                logger.info(f"inside last else block of stage 2")
                 # Log an error or take appropriate action since red_dot_value is not available
                 continue
 
         if current_stage == 3:
+            logger.info(f"main current_stage = {current_stage}")
             result = reset_dots_stage.reset_dots(ticker, time_frame)
             if result:
                 update_ui_collection(ticker, time_frame, **result)
@@ -193,7 +217,7 @@ def main():
     logger.warning("========================")
     # Set up the schedule
     schedule_interval = int(os.getenv("SCHEDULE_INTERVAL", 12))
-    schedule.every(schedule_interval).minutes.do(job)
+    schedule.every(schedule_interval).seconds.do(job)
 
     # Set up the file change observer
     event_handler = FileChangeHandler()

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 def find_green_dot(ticker, time_frame, red_dot_time_str, red_dot_value):
     logger = logging.getLogger('mainLogger')
+    logger.debug("Entering find_green_dot()")
 
     # Convert red dot time to datetime object and add 1 second
     red_dot_time = datetime.strptime(red_dot_time_str, "%Y-%m-%dT%H:%M:%SZ")

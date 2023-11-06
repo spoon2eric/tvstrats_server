@@ -4,7 +4,7 @@ from services.db_conn import MongoConnection
 
 def reset_dots(ticker, time_frame):
     logger = logging.getLogger('mainLogger')
-
+    logger.debug("Entering reset_dots()")
     with MongoConnection() as mongo_conn:
         ui_collection = mongo_conn.ui_collection
         mc_collection = mongo_conn.collection
