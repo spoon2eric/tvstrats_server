@@ -1,6 +1,7 @@
 import logging
 from services.db_conn import MongoConnection
 from datetime import datetime, timedelta
+from telegram_notifier import send_telegram_message
 
 def find_green_dot(ticker, time_frame, red_dot_time_str, red_dot_value):
     logger = logging.getLogger('mainLogger')
@@ -41,6 +42,37 @@ def find_green_dot(ticker, time_frame, red_dot_time_str, red_dot_value):
                 green_dot_value = float(green_dot_value_str)
                 if green_dot_value <= -9:  # Value for Stage 3 green dot
                     logger.info(f"S3: Green Dot found for {ticker}-{time_frame} at {green_dot_time}: {record}")
+
+                    # Insert/update the trade record after detecting Stage 3
+                    unique_criteria = {
+                        "Time Frame": time_frame,
+                        "TV Time": record['TV Time'],
+                        "Ticker": ticker
+                    }
+                    update_data = {
+                        "$setOnInsert": {
+                            "Trade": "Buy",
+                            "Message": 0
+                        }
+                    }
+
+                    with MongoConnection("market_data") as db:
+                        db['trades'].update_one(unique_criteria, update_data, upsert=True)
+
+                        # Check if the message for this trade has been sent already
+                        trade_record = db['trades'].find_one(unique_criteria)
+                        if trade_record and trade_record.get("Message") == 0:
+                            try:
+                                # Notify Telegram
+                                message = f"Trade Alert! Buy for {ticker} at {record['TV Time']} (Time Frame: {time_frame})"
+                                send_telegram_message(message)
+
+                                # Update the Message flag to 1
+                                db['trades'].update_one(unique_criteria, {"$set": {"Message": 1}})
+                            except Exception as e:
+                                print(f"In main, Failed to send Telegram message. Error: {e}")  # Print to console
+                                logging.error(f"Failed to send Telegram message. Error: {e}")
+                    
                     return {"Stage": 3, "TV Time": green_dot_time_str}
 
         # If no green dot is found after the red dot, log the information and return None
