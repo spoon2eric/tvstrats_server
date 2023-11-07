@@ -220,7 +220,9 @@ def job():
         logger.warning("No dot tickers found")
 
     logger.info(f"Found {len(dot_tickers)} dot tickers. Getting current green and red dots for all tickers and timeframes")
+    #Get Data for Dots.html
     dot_data_list = get_and_store_dot_data(dot_tickers)
+    logger.info(f"dot_data_list: {dot_data_list}")
 
     for dot_data in dot_data_list:
         logger.info(f"{dot_data}")
@@ -277,7 +279,8 @@ def job():
         if current_stage == 0:
             logger.info(f"main current_stage = {current_stage}")
             result = stage1.find_big_green_dot(ticker, time_frame)
-            if result:
+            logger.info(f"result from stage 0: {result}")
+            if result and result.get("TV Time"):
                 big_green_dot_time = result["TV Time"]
                 logger.info(f"Setting stage to 1 from main, big green dot found {result}")
                 update_ui_collection(ticker, time_frame, 1, big_green_dot_time=big_green_dot_time)
@@ -291,6 +294,7 @@ def job():
         if current_stage == 1:
             logger.info(f"main current_stage = {current_stage}")
             result = stage2.find_red_dot(ticker, time_frame, start_time)
+            logger.info(f"result from stage 1: {result}")
             if result and result["Stage"] != 0:
                 red_dot_time = result["TV Time"]
                 red_dot_value = result["Red Dot Value"]  # Get the red dot value from the result
@@ -303,6 +307,7 @@ def job():
 
         if current_stage == 2:
             result = stage2.find_red_dot(ticker, time_frame, start_time)
+            logger.info(f"result from stage 2: {result}")
             red_dot_value = result["Red Dot Value"]
             logger.info(f"Inside current_stage == 2, red_dot_value is: {red_dot_value}")
             logger.info(f"main current_stage = {current_stage}")
@@ -331,6 +336,7 @@ def job():
         if current_stage == 3:
             logger.info(f"main current_stage = {current_stage}")
             result = reset_dots_stage.reset_dots(ticker, time_frame)
+            logger.info(f"result from stage 3: {result}")
             if result:
                 update_ui_collection(ticker, time_frame, **result)
                 # No need to continue as the pattern has been reset
@@ -350,8 +356,8 @@ def main():
     logger.warning("========================")
     # Set up the schedule
     schedule_interval = int(os.getenv("SCHEDULE_INTERVAL", 12))
+    #schedule.every(schedule_interval).seconds.do(job)
     schedule.every(schedule_interval).minutes.do(job)
-
     # Set up the file change observer
     event_handler = FileChangeHandler()
     observer = Observer()

@@ -11,6 +11,14 @@ def get_and_store_dot_data(dot_tickers):
             with MongoConnection() as mongo_conn:
                 mc_collection = mongo_conn.collection
 
+                # Fetch the most recent "Mny Flow" for each ticker and time frame
+                money_flow_record = mc_collection.find_one(
+                    {"Time Frame": time_frame, "ticker": ticker}, 
+                    sort=[('TV Time', -1)]
+                )
+                money_flow = money_flow_record['Mny Flow'] if money_flow_record and 'Mny Flow' in money_flow_record else None
+                logger.info(f"money_flow_record: {money_flow_record}")
+
                 # Find the most recent record with a non-"null" Blue Wave Crossing UP or Down
                 record = mc_collection.find_one(
                     {
@@ -24,24 +32,17 @@ def get_and_store_dot_data(dot_tickers):
                     sort=[('TV Time', -1)]
                 )
 
-                if not record:
-                    logger.info(f"No dot found for {ticker}-{time_frame}")
-                    continue
-
                 # Determine dot color
                 is_red_dot = is_green_dot = "FALSE"
-                if record['Blue Wave Crossing UP'] != "null":
+                if record and record['Blue Wave Crossing UP'] != "null":
                     is_green_dot = "TRUE"
-                elif record['Blue Wave Crossing Down'] != "null":
+                elif record and record['Blue Wave Crossing Down'] != "null":
                     is_red_dot = "TRUE"
 
-                # Fetch the most recent "Mny Flow" for each ticker and time frame
-                money_flow_record = mc_collection.find_one(
-                    {"Time Frame": time_frame, "ticker": ticker}, 
-                    sort=[('TV Time', -1)]
-                )
-                
-                money_flow = money_flow_record['Mny Flow'] if money_flow_record and 'Mny Flow' in money_flow_record else None
+                # If no dot record found, log and create a default dot_data with Money Flow
+                if not record:
+                    logger.info(f"No dot found for {ticker}-{time_frame}")
+                    is_red_dot = is_green_dot = "FALSE"
 
                 dot_data = {
                     "ticker": ticker,
