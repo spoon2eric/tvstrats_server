@@ -2,6 +2,7 @@ import logging.config
 import os
 import time
 from dotenv import load_dotenv
+import requests
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from services.db_conn import setup_mongodb, MongoConnection
@@ -75,7 +76,7 @@ def get_current_stage(ticker, time_frame):
         else:
             return 0, None, None, None, None
 
-def update_ui_collection(ticker, time_frame, stage=None, is_red_dot=None, is_green_dot=None, money_flow=None, start_time=None, big_green_dot_time=None, red_dot_time=None, green_dot_time=None, red_dot_value=None):
+def update_ui_collection(ticker, time_frame, stage=None, is_red_dot=None, is_green_dot=None, money_flow=None, start_time=None, big_green_dot_time=None, red_dot_time=None, green_dot_time=None, red_dot_value=None, price=None):
     logger = logging.getLogger('mainLogger')
 
     with MongoConnection() as mongo_conn:
@@ -84,6 +85,7 @@ def update_ui_collection(ticker, time_frame, stage=None, is_red_dot=None, is_gre
         update_data = {
             "stage": stage, 
             "last_updated": time.time(),
+            "price": price,
             "start_time": start_time,
             "big_green_dot_time": big_green_dot_time,
             "red_dot_time": red_dot_time,
@@ -102,9 +104,111 @@ def update_ui_collection(ticker, time_frame, stage=None, is_red_dot=None, is_gre
             {"$set": update_data},
             upsert=True
         )
+        if price is not None:
+            logger.info(f"Updated {ticker} price: {price}")
         
         logger.info(f"Updated UI collection for {ticker}-{time_frame} to stage {stage}")
 
+COINMARKETCAP_API_KEY = os.getenv("COINMARKET_API_KEY")
+def update_ticker_prices():
+    logger = logging.getLogger('mainLogger')
+    logger.info("Updating ticker prices in ui_collection")
+
+    excluded_tickers = {"SPY", "TSLA", "UDOW", "SDOW", "FNGU", "FNGD", "NVDA"}
+    processed_tickers = set()  # Set to keep track of processed tickers
+
+    # Retrieve the list of tickers from MongoDB or a file
+    tickers = get_all_tickers_from_file()
+
+    # Generate a set of unique tickers excluding the ones in excluded_tickers
+    unique_tickers = set(ticker_info["ticker_symbol"].rstrip('USDT') for ticker_info in tickers if ticker_info["ticker_symbol"] not in excluded_tickers)
+    
+    for ticker in unique_tickers:
+        if ticker not in processed_tickers:  # Check if the ticker has already been processed
+            try:
+                price_data = fetch_ticker_price(ticker)
+                if price_data is not None:
+                    # Update the MongoDB ui_collection with the new price data
+                    update_ui_collection_with_prices(ticker, price_data)
+                processed_tickers.add(ticker)  # Add the ticker to the set of processed tickers
+            except Exception as e:
+                logger.error(f"Error updating price for {ticker}: {e}")
+
+def fetch_ticker_price(ticker_name):
+    logger = logging.getLogger('mainLogger')
+
+    excluded_tickers = {"ETHBTC","LINKBTC","LINKETH","SPY", "TSLA", "UDOW", "SDOW", "FNGU", "FNGD", "NVDA"}
+
+    # Check if the ticker is in the excluded list
+    if ticker_name in excluded_tickers:
+        logger.info(f"Ticker {ticker_name} is excluded from price fetching.")
+        return None  # Do not fetch price for excluded tickers
+    
+    # Strip off the last four characters if the ticker ends with 'USDT'
+    if ticker_name.endswith('USDT'):
+        ticker_name = ticker_name[:-4]
+
+    url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest'
+    logger.info(f"Fetching price for: {ticker_name}")
+    parameters = {
+        'symbol': ticker_name,
+        'convert': 'USD'
+    }
+    headers = {
+        'Accepts': 'application/json',
+        'X-CMC_PRO_API_KEY': COINMARKETCAP_API_KEY,
+    }
+
+    session = requests.Session()
+    session.headers.update(headers)
+
+    try:
+        response = session.get(url, params=parameters)
+        if response.status_code == 200:
+            data = response.json()
+            if 'data' in data and ticker_name in data['data'] and 'quote' in data['data'][ticker_name] and 'USD' in data['data'][ticker_name]['quote'] and 'price' in data['data'][ticker_name]['quote']['USD']:
+                price = data['data'][ticker_name]['quote']['USD']['price']
+                logger.info(f"Fetched price for {ticker_name}: {price}")
+                return price  # Just return the price
+            else:
+                logger.warning(f"Price data not available for the requested ticker {ticker_name}: {data}")
+                return None  # Return None if price data is not available
+        else:
+            logger.error(f"Failed to fetch price. HTTP status code: {response.status_code}, response: {response.text}")
+            return None  # Return None if non-200 status code is returned
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request to fetch price failed: {e}")
+        return None  # Return None if there was an error fetching the price
+
+def get_unique_ticker_prices(tickers):
+    # This will strip 'USDT' only for the purpose of making the API call
+    # The original ticker with 'USDT' will be stored in a dictionary with the stripped version as its key
+    stripped_tickers = {ticker_info["ticker_symbol"].replace('USDT', ''): ticker_info["ticker_symbol"] for ticker_info in tickers}
+    ticker_prices = {}
+
+    for stripped_ticker, original_ticker in stripped_tickers.items():
+        # Fetch the price using the stripped ticker
+        price = fetch_ticker_price(stripped_ticker)
+        if price is not None:
+            # Store the price using the original ticker symbol
+            ticker_prices[original_ticker] = price
+
+    return ticker_prices
+
+def update_ui_collection_with_prices(tickers, ticker_prices):
+    logger = logging.getLogger('mainLogger')
+    for ticker_info in tickers:
+        original_ticker = ticker_info["ticker_symbol"]
+        time_frame = ticker_info["time_frame"]
+
+        # Use the fetched price, ensuring we use the original ticker symbol including 'USDT'
+        price = ticker_prices.get(original_ticker)
+        if price is not None:
+            # Update the collection using the original ticker symbol
+            update_ui_collection(original_ticker, time_frame, price=price)
+            logger.info(f"Updated price for {original_ticker} at time frame {time_frame}.")
+        else:
+            logger.warning(f"No price fetched for ticker: {original_ticker}. Skipping update.")
 
 def job():
     logger = logging.getLogger('mainLogger')
@@ -128,7 +232,36 @@ def job():
             money_flow=dot_data["money_flow"]
         )
 
+    # Fetch tickers
     tickers = get_all_tickers_from_file()
+
+    # Step 1: Fetch prices for unique tickers
+    unique_tickers = set(ticker_info["ticker_symbol"] for ticker_info in tickers)
+    ticker_prices = {}
+
+    for ticker in unique_tickers:
+        # Fetch the price for each unique ticker
+        price = fetch_ticker_price(ticker)
+        if price is not None:
+            ticker_prices[ticker] = price
+        else:
+            logger.warning(f"Failed to fetch price for ticker: {ticker}")
+
+    # Step 2: Update UI Collection with fetched prices
+    for ticker_info in tickers:
+        ticker = ticker_info["ticker_symbol"]
+        time_frame = ticker_info["time_frame"]  # Make sure time_frame is retrieved from ticker_info
+
+        # Use the fetched price for this ticker
+        price = ticker_prices.get(ticker)
+        if price is not None:
+            update_ui_collection(ticker, time_frame, price=price)
+            logger.info(f"Updated price for {ticker} at time frame {time_frame}.")
+        else:
+            logger.warning(f"No price fetched for ticker: {ticker}. Skipping update.")
+
+
+
     logger.info(f"Start loop for tickers")
     for ticker_info in tickers:
         logger.info(f"Inside loop ticker_info")

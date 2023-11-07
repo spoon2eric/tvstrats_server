@@ -19,7 +19,7 @@ def find_red_dot(ticker, time_frame, start_time):
 
         for record in records:
             if stage == 1:
-                logger.info(f"Record in stage2: {record}")
+                #logger.info(f"Record in stage2: {record}")
                 red_dot_value_str = record.get('Blue Wave Crossing Down')
                 if red_dot_value_str and red_dot_value_str != 'null':
                     red_dot_value = float(red_dot_value_str)

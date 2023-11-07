@@ -1,7 +1,7 @@
 import logging
 from services.db_conn import MongoConnection
 from datetime import datetime, timedelta
-from telegram_notifier import send_telegram_message
+from services.telegram_notifier import send_telegram_message
 
 def find_green_dot(ticker, time_frame, red_dot_time_str, red_dot_value):
     logger = logging.getLogger('mainLogger')
@@ -56,11 +56,12 @@ def find_green_dot(ticker, time_frame, red_dot_time_str, red_dot_value):
                         }
                     }
 
-                    with MongoConnection("market_data") as db:
-                        db['trades'].update_one(unique_criteria, update_data, upsert=True)
+                    with MongoConnection() as mongo_conn:
+                        trades_collection = mongo_conn.trades_collection
+                        trades_collection.update_one(unique_criteria, update_data, upsert=True)
 
                         # Check if the message for this trade has been sent already
-                        trade_record = db['trades'].find_one(unique_criteria)
+                        trade_record = trades_collection.find_one(unique_criteria)
                         if trade_record and trade_record.get("Message") == 0:
                             try:
                                 # Notify Telegram
@@ -68,7 +69,7 @@ def find_green_dot(ticker, time_frame, red_dot_time_str, red_dot_value):
                                 send_telegram_message(message)
 
                                 # Update the Message flag to 1
-                                db['trades'].update_one(unique_criteria, {"$set": {"Message": 1}})
+                                trades_collection.update_one(unique_criteria, {"$set": {"Message": 1}})
                             except Exception as e:
                                 print(f"In main, Failed to send Telegram message. Error: {e}")  # Print to console
                                 logging.error(f"Failed to send Telegram message. Error: {e}")
