@@ -2,7 +2,7 @@ import logging.config
 import os
 import time
 from dotenv import load_dotenv
-import requests
+#import requests
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from services.db_conn import setup_mongodb, MongoConnection
