@@ -134,17 +134,24 @@ def fetch_ticker_price(ticker_name):
     logger = logging.getLogger('mainLogger')
     time_frame = '15'  # Define the 15-minute time frame
 
-    logger.info(f"Fetching price for: {ticker_name} with a {time_frame} minute time frame")
+    logger.info(f"Fetching latest price for: {ticker_name} with a {time_frame} minute time frame")
 
     try:
         with MongoConnection() as mongo_conn:
-            # Query the market_cipher_b collection for the specific ticker and time frame
-            query = {"ticker_symbol": ticker_name, "time_frame": time_frame}
-            document = mongo_conn.collection.find_one(query)
+            # Query the market_cipher_b collection for the latest record of the specific ticker and time frame
+            query = {"ticker": ticker_name, "Time Frame": time_frame}
+            # Sorting by "TV Time" in descending order to get the latest record
+            latest_record = mongo_conn.collection.find_one(query, sort=[("TV Time", -1)])
             
-            if document and 'close' in document:
-                price = document['close']
-                logger.info(f"Fetched price for {ticker_name}: {price}")
+            if latest_record and 'close' in latest_record:
+                # Convert the 'close' value to float
+                try:
+                    price = float(latest_record['close'])
+                except ValueError:
+                    logger.error(f"Invalid price format for {ticker_name}: {latest_record['close']}")
+                    return None
+
+                logger.info(f"Fetched latest price for {ticker_name}: {price}")
 
                 # Update the ui_collection with the fetched price
                 ui_update = {"$set": {"price": price}}
@@ -152,42 +159,42 @@ def fetch_ticker_price(ticker_name):
 
                 return price
             else:
-                logger.warning(f"Price data not available for the requested ticker {ticker_name}")
+                logger.warning(f"Latest price data not available for the requested ticker {ticker_name}")
                 return None
     except Exception as e:
-        logger.error(f"Failed to fetch price from MongoDB: {e}")
+        logger.error(f"Failed to fetch latest price from MongoDB: {e}")
         return None
     
 
-def get_unique_ticker_prices(tickers):
-    # This will strip 'USDT' only for the purpose of making the API call
-    # The original ticker with 'USDT' will be stored in a dictionary with the stripped version as its key
-    stripped_tickers = {ticker_info["ticker_symbol"].replace('USDT', ''): ticker_info["ticker_symbol"] for ticker_info in tickers}
-    ticker_prices = {}
+# def get_unique_ticker_prices(tickers):
+#     # This will strip 'USDT' only for the purpose of making the API call
+#     # The original ticker with 'USDT' will be stored in a dictionary with the stripped version as its key
+#     stripped_tickers = {ticker_info["ticker_symbol"].replace('USDT', ''): ticker_info["ticker_symbol"] for ticker_info in tickers}
+#     ticker_prices = {}
 
-    for stripped_ticker, original_ticker in stripped_tickers.items():
-        # Fetch the price using the stripped ticker
-        price = fetch_ticker_price(stripped_ticker)
-        if price is not None:
-            # Store the price using the original ticker symbol
-            ticker_prices[original_ticker] = price
+#     for stripped_ticker, original_ticker in stripped_tickers.items():
+#         # Fetch the price using the stripped ticker
+#         price = fetch_ticker_price(stripped_ticker)
+#         if price is not None:
+#             # Store the price using the original ticker symbol
+#             ticker_prices[original_ticker] = price
 
-    return ticker_prices
+#     return ticker_prices
 
-def update_ui_collection_with_prices(tickers, ticker_prices):
-    logger = logging.getLogger('mainLogger')
-    for ticker_info in tickers:
-        original_ticker = ticker_info["ticker_symbol"]
-        time_frame = ticker_info["time_frame"]
+# def update_ui_collection_with_prices(tickers, ticker_prices):
+#     logger = logging.getLogger('mainLogger')
+#     for ticker_info in tickers:
+#         original_ticker = ticker_info["ticker_symbol"]
+#         time_frame = ticker_info["time_frame"]
 
-        # Use the fetched price, ensuring we use the original ticker symbol including 'USDT'
-        price = ticker_prices.get(original_ticker)
-        if price is not None:
-            # Update the collection using the original ticker symbol
-            update_ui_collection(original_ticker, time_frame, price=price)
-            logger.info(f"Updated price for {original_ticker} at time frame {time_frame}.")
-        else:
-            logger.warning(f"No price fetched for ticker: {original_ticker}. Skipping update.")
+#         # Use the fetched price, ensuring we use the original ticker symbol including 'USDT'
+#         price = ticker_prices.get(original_ticker)
+#         if price is not None:
+#             # Update the collection using the original ticker symbol
+#             update_ui_collection(original_ticker, time_frame, price=price)
+#             logger.info(f"Updated price for {original_ticker} at time frame {time_frame}.")
+#         else:
+#             logger.warning(f"No price fetched for ticker: {original_ticker}. Skipping update.")
 
 def job():
     logger = logging.getLogger('mainLogger')

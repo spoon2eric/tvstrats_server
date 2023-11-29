@@ -21,5 +21,5 @@ def find_big_green_dot(ticker, time_frame):
             logger.info(f"Stage 1, BIG GREEN DOT TIME for {ticker}-{time_frame}: {green_dot_time}")
             return {"Stage": 1, "TV Time": green_dot_time}
         else:
-            logger.warning(f"No Big Green Dot found for {ticker}-{time_frame} with query {query}")
+            logger.info(f"No Big Green Dot found for {ticker}-{time_frame} with query {query}")
             return {"Stage": 0, "TV Time": None}
