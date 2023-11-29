@@ -109,76 +109,55 @@ def update_ui_collection(ticker, time_frame, stage=None, is_red_dot=None, is_gre
         
         logger.info(f"Updated UI collection for {ticker}-{time_frame} to stage {stage}")
 
-COINMARKETCAP_API_KEY = os.getenv("COINMARKET_API_KEY")
+
 def update_ticker_prices():
     logger = logging.getLogger('mainLogger')
     logger.info("Updating ticker prices in ui_collection")
 
-    excluded_tickers = {"SPY", "TSLA", "UDOW", "SDOW", "FNGU", "FNGD", "NVDA"}
-    processed_tickers = set()  # Set to keep track of processed tickers
-
     # Retrieve the list of tickers from MongoDB or a file
     tickers = get_all_tickers_from_file()
-
-    # Generate a set of unique tickers excluding the ones in excluded_tickers
-    unique_tickers = set(ticker_info["ticker_symbol"].rstrip('USDT') for ticker_info in tickers if ticker_info["ticker_symbol"] not in excluded_tickers)
     
-    for ticker in unique_tickers:
+    processed_tickers = set()  # Set to keep track of processed tickers
+
+    for ticker_info in tickers:
+        ticker = ticker_info["ticker_symbol"]
         if ticker not in processed_tickers:  # Check if the ticker has already been processed
             try:
-                price_data = fetch_ticker_price(ticker)
-                if price_data is not None:
-                    # Update the MongoDB ui_collection with the new price data
-                    update_ui_collection_with_prices(ticker, price_data)
+                # Fetch and update the price data in ui_collection
+                fetch_ticker_price(ticker)
                 processed_tickers.add(ticker)  # Add the ticker to the set of processed tickers
             except Exception as e:
                 logger.error(f"Error updating price for {ticker}: {e}")
 
+
 def fetch_ticker_price(ticker_name):
     logger = logging.getLogger('mainLogger')
+    time_frame = '15'  # Define the 15-minute time frame
 
-    excluded_tickers = {"ETHBTC","LINKBTC","LINKETH","SPY", "TSLA", "UDOW", "SDOW", "FNGU", "FNGD", "NVDA"}
-
-    # Check if the ticker is in the excluded list
-    if ticker_name in excluded_tickers:
-        logger.info(f"Ticker {ticker_name} is excluded from price fetching.")
-        return None  # Do not fetch price for excluded tickers
-    
-    # Strip off the last four characters if the ticker ends with 'USDT'
-    if ticker_name.endswith('USDT'):
-        ticker_name = ticker_name[:-4]
-
-    url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest'
-    logger.info(f"Fetching price for: {ticker_name}")
-    parameters = {
-        'symbol': ticker_name,
-        'convert': 'USD'
-    }
-    headers = {
-        'Accepts': 'application/json',
-        'X-CMC_PRO_API_KEY': COINMARKETCAP_API_KEY,
-    }
-
-    session = requests.Session()
-    session.headers.update(headers)
+    logger.info(f"Fetching price for: {ticker_name} with a {time_frame} minute time frame")
 
     try:
-        response = session.get(url, params=parameters)
-        if response.status_code == 200:
-            data = response.json()
-            if 'data' in data and ticker_name in data['data'] and 'quote' in data['data'][ticker_name] and 'USD' in data['data'][ticker_name]['quote'] and 'price' in data['data'][ticker_name]['quote']['USD']:
-                price = data['data'][ticker_name]['quote']['USD']['price']
+        with MongoConnection() as mongo_conn:
+            # Query the market_cipher_b collection for the specific ticker and time frame
+            query = {"ticker_symbol": ticker_name, "time_frame": time_frame}
+            document = mongo_conn.collection.find_one(query)
+            
+            if document and 'close' in document:
+                price = document['close']
                 logger.info(f"Fetched price for {ticker_name}: {price}")
-                return price  # Just return the price
+
+                # Update the ui_collection with the fetched price
+                ui_update = {"$set": {"price": price}}
+                mongo_conn.ui_collection.update_one({"ticker_symbol": ticker_name}, ui_update, upsert=True)
+
+                return price
             else:
-                logger.warning(f"Price data not available for the requested ticker {ticker_name}: {data}")
-                return None  # Return None if price data is not available
-        else:
-            logger.error(f"Failed to fetch price. HTTP status code: {response.status_code}, response: {response.text}")
-            return None  # Return None if non-200 status code is returned
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request to fetch price failed: {e}")
-        return None  # Return None if there was an error fetching the price
+                logger.warning(f"Price data not available for the requested ticker {ticker_name}")
+                return None
+    except Exception as e:
+        logger.error(f"Failed to fetch price from MongoDB: {e}")
+        return None
+    
 
 def get_unique_ticker_prices(tickers):
     # This will strip 'USDT' only for the purpose of making the API call
